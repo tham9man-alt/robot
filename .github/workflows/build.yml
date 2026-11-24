@@ -128,7 +128,9 @@ jobs:
           import android.app.TimePickerDialog
           import android.content.Intent
           import android.content.pm.PackageManager
+          import android.graphics.Color
           import android.graphics.Paint
+          import android.graphics.drawable.GradientDrawable
           import android.net.Uri
           import android.os.Build
           import android.os.Bundle
@@ -145,6 +147,7 @@ jobs:
           class MainActivity : Activity() {
 
               private lateinit var listBox: LinearLayout
+              private lateinit var colorBox: LinearLayout
               private lateinit var input: EditText
               private lateinit var timeBtn: Button
               private var pickedMinutes = -1
@@ -188,6 +191,14 @@ jobs:
                   water.setOnCheckedChangeListener { _, on -> TaskStore.setWater(this@MainActivity, on) }
                   water.setPadding(0, dp(12), 0, dp(12))
 
+                  val colorTitle = TextView(this)
+                  colorTitle.text = "لون الروبوت"
+                  colorTitle.textSize = 20f
+                  colorTitle.setPadding(0, dp(8), 0, dp(4))
+
+                  colorBox = LinearLayout(this)
+                  colorBox.orientation = LinearLayout.VERTICAL
+
                   val tasksTitle = TextView(this)
                   tasksTitle.text = "مهامي"
                   tasksTitle.textSize = 20f
@@ -228,6 +239,8 @@ jobs:
                   root.addView(hint)
                   root.addView(buttons)
                   root.addView(water)
+                  root.addView(colorTitle)
+                  root.addView(colorBox)
                   root.addView(tasksTitle)
                   root.addView(inputRow)
                   root.addView(timeHint)
@@ -238,7 +251,44 @@ jobs:
                   scroll.addView(root)
                   setContentView(scroll)
 
+                  refreshColors()
                   refresh()
+              }
+
+              private fun refreshColors() {
+                  colorBox.removeAllViews()
+                  val selected = TaskStore.color(this)
+                  val perRow = 4
+                  var i = 0
+                  while (i < RobotColors.body.size) {
+                      val row = LinearLayout(this)
+                      row.orientation = LinearLayout.HORIZONTAL
+                      var j = i
+                      while (j < i + perRow && j < RobotColors.body.size) {
+                          val idx = j
+                          val dot = View(this)
+                          val bg = GradientDrawable()
+                          bg.shape = GradientDrawable.OVAL
+                          bg.setColor(RobotColors.body[idx])
+                          if (idx == selected) {
+                              bg.setStroke(dp(4), Color.rgb(23, 37, 43))
+                          } else {
+                              bg.setStroke(dp(1), Color.rgb(120, 144, 156))
+                          }
+                          dot.background = bg
+                          dot.contentDescription = RobotColors.names[idx]
+                          dot.setOnClickListener {
+                              TaskStore.setColor(this@MainActivity, idx)
+                              refreshColors()
+                          }
+                          val lp = LinearLayout.LayoutParams(dp(52), dp(52))
+                          lp.setMargins(dp(6), dp(6), dp(6), dp(6))
+                          row.addView(dot, lp)
+                          j++
+                      }
+                      colorBox.addView(row)
+                      i += perRow
+                  }
               }
 
               private fun pickTime() {
@@ -361,6 +411,14 @@ jobs:
               }
               private val rect = RectF()
 
+              private var bodyColor = Color.rgb(176, 190, 197)
+              private var glowColor = Color.rgb(0, 229, 255)
+
+              fun setTheme(body: Int, glowC: Int) {
+                  bodyColor = body
+                  glowColor = glowC
+              }
+
               fun poke() {
                   val now = SystemClock.uptimeMillis()
                   state = State.HAPPY
@@ -383,6 +441,8 @@ jobs:
                   val t = now / 1000f
                   val u = width / 100f
                   line.strokeWidth = 3f * u
+                  metal.color = bodyColor
+                  glow.color = glowColor
 
                   val bob = when {
                       state == State.HAPPY -> -abs(sin(t * 10f)) * 9f * u
@@ -426,561 +486,4 @@ jobs:
                   canvas.drawLine(72f * u, 64f * u, armEndX, armEndY, line)
 
                   // رأس
-                  rect.set(22f * u, 18f * u, 78f * u, 54f * u); canvas.drawRoundRect(rect, 11f * u, 11f * u, metal)
-                  rect.set(27f * u, 23f * u, 73f * u, 49f * u); canvas.drawRoundRect(rect, 8f * u, 8f * u, dark)
-
-                  drawFace(canvas, u, t)
-                  canvas.restore()
-
-                  if (state == State.SLEEP) {
-                      text.textSize = 11f * u
-                      canvas.drawText("z", 78f * u, 20f * u - (t * 6f * u) % (8f * u), text)
-                      text.textSize = 8f * u
-                      canvas.drawText("z", 86f * u, 30f * u - (t * 5f * u) % (6f * u), text)
-                  }
-
-                  postInvalidateOnAnimation()
-              }
-
-              private fun drawFace(canvas: Canvas, u: Float, t: Float) {
-                  val ex = floatArrayOf(39f, 61f)
-                  val ey = 36f
-                  when {
-                      state == State.SLEEP -> {
-                          for (x in ex) canvas.drawLine((x - 5f) * u, ey * u, (x + 5f) * u, ey * u, whiteStroke(u))
-                      }
-                      state == State.HAPPY -> {
-                          for (x in ex) {
-                              rect.set((x - 5f) * u, (ey - 4f) * u, (x + 5f) * u, (ey + 6f) * u)
-                              canvas.drawArc(rect, 200f, 140f, false, whiteStroke(u))
-                          }
-                      }
-                      else -> {
-                          val blink = (t % 4f) < 0.14f
-                          for (x in ex) {
-                              if (blink) {
-                                  canvas.drawLine((x - 5f) * u, ey * u, (x + 5f) * u, ey * u, whiteStroke(u))
-                              } else {
-                                  canvas.drawCircle(x * u, ey * u, 6f * u, white)
-                                  canvas.drawCircle((x + lookX * 2.5f) * u, ey * u, 3f * u, dark)
-                              }
-                          }
-                      }
-                  }
-                  // فم
-                  rect.set(44f * u, 38f * u, 56f * u, 46f * u)
-                  if (state == State.HAPPY) canvas.drawArc(rect, 20f, 140f, false, whiteStroke(u))
-                  else if (state != State.SLEEP) canvas.drawLine(45f * u, 44f * u, 55f * u, 44f * u, whiteStroke(u))
-              }
-
-              private val strokeWhite = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                  color = Color.WHITE
-                  style = Paint.Style.STROKE
-                  strokeCap = Paint.Cap.ROUND
-              }
-
-              private fun whiteStroke(u: Float): Paint {
-                  strokeWhite.strokeWidth = 2.5f * u
-                  return strokeWhite
-              }
-          }
-          ROBOT_EOF
-          cat > app/src/main/java/com/example/robotoverlay/RobotService.kt <<'ROBOT_EOF'
-          package com.example.robotoverlay
-
-          import android.animation.ValueAnimator
-          import android.app.Notification
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.app.PendingIntent
-          import android.app.Service
-          import android.content.BroadcastReceiver
-          import android.content.Context
-          import android.content.Intent
-          import android.content.IntentFilter
-          import android.graphics.Color
-          import android.graphics.PixelFormat
-          import android.graphics.drawable.GradientDrawable
-          import android.os.Build
-          import android.os.Handler
-          import android.os.IBinder
-          import android.os.Looper
-          import android.os.SystemClock
-          import android.view.Gravity
-          import android.view.MotionEvent
-          import android.view.View
-          import android.view.WindowManager
-          import android.view.animation.LinearInterpolator
-          import android.widget.TextView
-          import java.text.SimpleDateFormat
-          import java.util.Calendar
-          import java.util.Date
-          import java.util.Locale
-          import kotlin.math.abs
-          import kotlin.math.hypot
-          import kotlin.random.Random
-
-          class RobotService : Service() {
-
-              private lateinit var wm: WindowManager
-              private var robot: RobotView? = null
-              private lateinit var params: WindowManager.LayoutParams
-              private val handler = Handler(Looper.getMainLooper())
-              private var walkAnimator: ValueAnimator? = null
-              private var dragging = false
-
-              private var bubble: TextView? = null
-              private var bubbleShown = false
-              private var bubbleW = 0
-              private var bubbleH = 0
-              private lateinit var bubbleParams: WindowManager.LayoutParams
-
-              private var lastTaskNudge = 0L
-              private var lastWater = 0L
-              private var batteryReceiver: BroadcastReceiver? = null
-
-              private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-              private val sizePx get() = dp(120)
-
-              private val hideBubble = Runnable { removeBubble() }
-
-              private val wander = object : Runnable {
-                  override fun run() {
-                      val r = robot ?: return
-                      if (!dragging && !bubbleShown && r.state == RobotView.State.IDLE) walkToRandomSpot()
-                      handler.postDelayed(this, Random.nextLong(4000, 9000))
-                  }
-              }
-
-              private val tick = object : Runnable {
-                  override fun run() {
-                      checkTasks()
-                      nudges()
-                      handler.postDelayed(this, 20_000)
-                  }
-              }
-
-              override fun onBind(intent: Intent?): IBinder? = null
-
-              override fun onCreate() {
-                  super.onCreate()
-                  wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                  startAsForeground()
-                  addRobot()
-                  setupBubbleParams()
-
-                  val now = SystemClock.elapsedRealtime()
-                  lastTaskNudge = now
-                  lastWater = now
-
-                  registerBattery()
-                  handler.postDelayed(wander, 3000)
-                  handler.postDelayed(tick, 5000)
-                  handler.postDelayed({ say(greeting(), 5000, true) }, 1200)
-              }
-
-              override fun onDestroy() {
-                  handler.removeCallbacksAndMessages(null)
-                  walkAnimator?.cancel()
-                  removeBubble()
-                  runCatching { batteryReceiver?.let { unregisterReceiver(it) } }
-                  batteryReceiver = null
-                  robot?.let { runCatching { wm.removeView(it) } }
-                  robot = null
-                  super.onDestroy()
-              }
-
-              private fun startAsForeground() {
-                  val channelId = "robot_overlay"
-                  val nm = getSystemService(NotificationManager::class.java)
-                  nm.createNotificationChannel(
-                      NotificationChannel(channelId, "Robot", NotificationManager.IMPORTANCE_LOW)
-                  )
-                  val stopIntent = PendingIntent.getService(
-                      this, 0,
-                      Intent(this, RobotService::class.java).setAction("STOP"),
-                      PendingIntent.FLAG_IMMUTABLE
-                  )
-                  val notification = Notification.Builder(this, channelId)
-                      .setContentTitle("الروبوت شغّال")
-                      .setContentText("اسحب الإشعار للأسفل لإيقافه")
-                      .setSmallIcon(android.R.drawable.ic_dialog_info)
-                      .addAction(
-                          Notification.Action.Builder(
-                              android.R.drawable.ic_menu_close_clear_cancel, "إيقاف", stopIntent
-                          ).build()
-                      )
-                      .setOngoing(true)
-                      .build()
-                  startForeground(1, notification)
-              }
-
-              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  if (intent?.action == "STOP") {
-                      stopSelf()
-                      return START_NOT_STICKY
-                  }
-                  return START_STICKY
-              }
-
-              private fun registerBattery() {
-                  val r = object : BroadcastReceiver() {
-                      override fun onReceive(context: Context?, intent: Intent?) {
-                          say("البطارية ضعيفة، اشحن الهاتف 🔋", 8000, false)
-                      }
-                  }
-                  val f = IntentFilter(Intent.ACTION_BATTERY_LOW)
-                  if (Build.VERSION.SDK_INT >= 33) {
-                      registerReceiver(r, f, Context.RECEIVER_NOT_EXPORTED)
-                  } else {
-                      registerReceiver(r, f)
-                  }
-                  batteryReceiver = r
-              }
-
-              // ---------- الكلام والتذكيرات ----------
-
-              private fun dayString(): String =
-                  SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-
-              private fun greeting(): String {
-                  val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-                  return when {
-                      h < 5 -> "ما زلت مستيقظاً؟ لا تسهر كثيراً"
-                      h < 12 -> "صباح الخير! يوم موفّق"
-                      h < 17 -> "نهارك سعيد!"
-                      else -> "مساء الخير!"
-                  }
-              }
-
-              private fun nowText(): String {
-                  val c = Calendar.getInstance()
-                  val m = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE)
-                  return "الساعة الآن " + TaskStore.fmt(m)
-              }
-
-              private fun taskLine(t: Task): String =
-                  if (t.minutes >= 0) t.text + " (" + TaskStore.fmt(t.minutes) + ")" else t.text
-
-              private fun checkTasks() {
-                  val c = Calendar.getInstance()
-                  val nowMin = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE)
-                  val day = dayString()
-                  val due = TaskStore.load(this).firstOrNull {
-                      !it.done && it.minutes >= 0 &&
-                          nowMin >= it.minutes && nowMin - it.minutes < 120 &&
-                          it.firedDay != day
-                  }
-                  if (due != null) {
-                      TaskStore.markFired(this, due.id, day)
-                      say("حان وقت المهمة: " + due.text, 9000, true)
-                  }
-              }
-
-              private fun nudges() {
-                  if (bubbleShown || dragging) return
-                  val now = SystemClock.elapsedRealtime()
-                  val pending = TaskStore.load(this).filter { !it.done }
-                  if (pending.isNotEmpty() && now - lastTaskNudge > 15 * 60_000L) {
-                      lastTaskNudge = now
-                      val msg = if (pending.size == 1) {
-                          "تذكير: " + taskLine(pending.first())
-                      } else {
-                          "عندك " + pending.size + " مهام، أولها: " + taskLine(pending.first())
-                      }
-                      say(msg, 7000, false)
-                  } else if (TaskStore.water(this) && now - lastWater > 60 * 60_000L) {
-                      lastWater = now
-                      say("اشرب كوب ماء 💧", 6000, true)
-                  }
-              }
-
-              private fun onTap() {
-                  val pending = TaskStore.load(this).filter { !it.done }
-                  val msg = if (pending.isNotEmpty()) {
-                      "مهمتك التالية: " + taskLine(pending.first())
-                  } else {
-                      val options = listOf(
-                          nowText(),
-                          greeting(),
-                          "ما عندك مهام الآن. أضف مهمة من التطبيق",
-                          "أنا هنا إذا احتجتني"
-                      )
-                      options[Random.nextInt(options.size)]
-                  }
-                  say(msg, 5000, true)
-              }
-
-              private fun say(text: String, ms: Long, happy: Boolean) {
-                  val view = robot ?: return
-                  walkAnimator?.cancel()
-                  view.walking = false
-                  if (happy) view.poke() else view.touchActivity()
-                  showBubble(text)
-                  handler.removeCallbacks(hideBubble)
-                  handler.postDelayed(hideBubble, ms)
-              }
-
-              // ---------- فقاعة الكلام (نافذة ثانية لا تعترض اللمس) ----------
-
-              private fun setupBubbleParams() {
-                  bubbleParams = WindowManager.LayoutParams(
-                      WindowManager.LayoutParams.WRAP_CONTENT,
-                      WindowManager.LayoutParams.WRAP_CONTENT,
-                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                          WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                      PixelFormat.TRANSLUCENT
-                  )
-                  bubbleParams.gravity = Gravity.TOP or Gravity.START
-              }
-
-              private fun buildBubble(): TextView {
-                  val dm = resources.displayMetrics
-                  val b = TextView(this)
-                  b.setTextColor(Color.rgb(38, 50, 56))
-                  b.textSize = 14f
-                  b.gravity = Gravity.CENTER
-                  b.setPadding(dp(12), dp(8), dp(12), dp(8))
-                  b.maxWidth = (dm.widthPixels * 0.7f).toInt()
-                  val bg = GradientDrawable()
-                  bg.setColor(Color.WHITE)
-                  bg.cornerRadius = dp(14).toFloat()
-                  bg.setStroke(dp(1), Color.rgb(176, 190, 197))
-                  b.background = bg
-                  return b
-              }
-
-              private fun showBubble(text: String) {
-                  val dm = resources.displayMetrics
-                  val b = bubble ?: buildBubble().also { bubble = it }
-                  b.text = text
-                  b.measure(
-                      View.MeasureSpec.makeMeasureSpec((dm.widthPixels * 0.7f).toInt(), View.MeasureSpec.AT_MOST),
-                      View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-                  )
-                  bubbleW = b.measuredWidth
-                  bubbleH = b.measuredHeight
-                  if (!bubbleShown) {
-                      wm.addView(b, bubbleParams)
-                      bubbleShown = true
-                  }
-                  positionBubble()
-              }
-
-              private fun positionBubble() {
-                  val b = bubble ?: return
-                  if (!bubbleShown) return
-                  val dm = resources.displayMetrics
-                  val x = (params.x + sizePx / 2 - bubbleW / 2)
-                      .coerceIn(0, (dm.widthPixels - bubbleW).coerceAtLeast(0))
-                  val y = (params.y - bubbleH - dp(6)).coerceAtLeast(0)
-                  bubbleParams.x = x
-                  bubbleParams.y = y
-                  runCatching { wm.updateViewLayout(b, bubbleParams) }
-              }
-
-              private fun removeBubble() {
-                  val b = bubble
-                  if (b != null && bubbleShown) {
-                      runCatching { wm.removeView(b) }
-                  }
-                  bubbleShown = false
-              }
-
-              // ---------- الروبوت نفسه ----------
-
-              private fun addRobot() {
-                  val view = RobotView(this)
-                  val dm = resources.displayMetrics
-                  params = WindowManager.LayoutParams(
-                      sizePx, sizePx,
-                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                      PixelFormat.TRANSLUCENT
-                  ).apply {
-                      gravity = Gravity.TOP or Gravity.START
-                      x = dm.widthPixels / 2 - sizePx / 2
-                      y = dm.heightPixels / 2
-                  }
-
-                  var downX = 0f
-                  var downY = 0f
-                  var startX = 0
-                  var startY = 0
-                  var moved = false
-
-                  view.setOnTouchListener { _, e ->
-                      when (e.action) {
-                          MotionEvent.ACTION_DOWN -> {
-                              walkAnimator?.cancel()
-                              view.walking = false
-                              dragging = true
-                              moved = false
-                              downX = e.rawX; downY = e.rawY
-                              startX = params.x; startY = params.y
-                              view.touchActivity()
-                          }
-                          MotionEvent.ACTION_MOVE -> {
-                              val dx = e.rawX - downX
-                              val dy = e.rawY - downY
-                              if (hypot(dx, dy) > 12f) moved = true
-                              if (moved) {
-                                  params.x = (startX + dx).toInt()
-                                  params.y = (startY + dy).toInt()
-                                  if (abs(dx) > 6f) view.facing = if (dx > 0) 1f else -1f
-                                  view.lookX = (dx / 150f).coerceIn(-1f, 1f)
-                                  updateLayout(view)
-                              }
-                          }
-                          MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                              dragging = false
-                              view.lookX = 0f
-                              if (!moved) onTap()
-                          }
-                      }
-                      true
-                  }
-
-                  wm.addView(view, params)
-                  robot = view
-              }
-
-              private fun updateLayout(view: RobotView) {
-                  runCatching { wm.updateViewLayout(view, params) }
-                  positionBubble()
-              }
-
-              private fun walkToRandomSpot() {
-                  val view = robot ?: return
-                  val dm = resources.displayMetrics
-                  val targetX = Random.nextInt(0, (dm.widthPixels - sizePx).coerceAtLeast(1))
-                  val targetY = Random.nextInt(
-                      (dm.heightPixels * 0.2f).toInt(),
-                      (dm.heightPixels * 0.7f).toInt().coerceAtLeast((dm.heightPixels * 0.2f).toInt() + 1)
-                  )
-                  val fromX = params.x
-                  val fromY = params.y
-                  val dist = hypot((targetX - fromX).toFloat(), (targetY - fromY).toFloat())
-
-                  view.facing = if (targetX >= fromX) 1f else -1f
-                  view.lookX = view.facing
-                  view.walking = true
-
-                  walkAnimator?.cancel()
-                  walkAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                      duration = (dist / dm.density * 9f).toLong().coerceIn(800L, 5000L)
-                      interpolator = LinearInterpolator()
-                      addUpdateListener {
-                          val f = it.animatedValue as Float
-                          params.x = (fromX + (targetX - fromX) * f).toInt()
-                          params.y = (fromY + (targetY - fromY) * f).toInt()
-                          updateLayout(view)
-                      }
-                      addListener(object : android.animation.AnimatorListenerAdapter() {
-                          override fun onAnimationEnd(animation: android.animation.Animator) {
-                              view.walking = false
-                              view.lookX = 0f
-                          }
-                      })
-                      start()
-                  }
-              }
-          }
-          ROBOT_EOF
-          cat > app/src/main/java/com/example/robotoverlay/TaskStore.kt <<'ROBOT_EOF'
-          package com.example.robotoverlay
-
-          import android.content.Context
-          import org.json.JSONArray
-          import org.json.JSONObject
-          import java.util.Locale
-
-          data class Task(
-              val id: Long,
-              val text: String,
-              val minutes: Int,      // وقت التذكير بالدقائق من منتصف الليل، -1 يعني بدون وقت
-              val done: Boolean,
-              val firedDay: String   // آخر يوم تم التذكير فيه
-          )
-
-          object TaskStore {
-              private const val PREFS = "robot_tasks"
-              private const val KEY_TASKS = "tasks"
-              private const val KEY_WATER = "water"
-
-              private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
-              fun fmt(minutes: Int): String =
-                  String.format(Locale.US, "%02d:%02d", minutes / 60, minutes % 60)
-
-              fun load(c: Context): List<Task> {
-                  val raw = prefs(c).getString(KEY_TASKS, "[]") ?: "[]"
-                  val arr = runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
-                  val out = ArrayList<Task>()
-                  for (i in 0 until arr.length()) {
-                      val o = arr.optJSONObject(i) ?: continue
-                      out.add(
-                          Task(
-                              o.optLong("id"),
-                              o.optString("text"),
-                              o.optInt("minutes", -1),
-                              o.optBoolean("done", false),
-                              o.optString("firedDay", "")
-                          )
-                      )
-                  }
-                  return out
-              }
-
-              private fun save(c: Context, tasks: List<Task>) {
-                  val arr = JSONArray()
-                  for (t in tasks) {
-                      val o = JSONObject()
-                      o.put("id", t.id)
-                      o.put("text", t.text)
-                      o.put("minutes", t.minutes)
-                      o.put("done", t.done)
-                      o.put("firedDay", t.firedDay)
-                      arr.put(o)
-                  }
-                  prefs(c).edit().putString(KEY_TASKS, arr.toString()).apply()
-              }
-
-              fun add(c: Context, text: String, minutes: Int) {
-                  val list = load(c).toMutableList()
-                  list.add(Task(System.currentTimeMillis(), text, minutes, false, ""))
-                  save(c, list)
-              }
-
-              fun toggle(c: Context, id: Long) {
-                  save(c, load(c).map { if (it.id == id) it.copy(done = !it.done) else it })
-              }
-
-              fun remove(c: Context, id: Long) {
-                  save(c, load(c).filter { it.id != id })
-              }
-
-              fun markFired(c: Context, id: Long, day: String) {
-                  save(c, load(c).map { if (it.id == id) it.copy(firedDay = day) else it })
-              }
-
-              fun water(c: Context): Boolean = prefs(c).getBoolean(KEY_WATER, true)
-
-              fun setWater(c: Context, on: Boolean) {
-                  prefs(c).edit().putBoolean(KEY_WATER, on).apply()
-              }
-          }
-          ROBOT_EOF
-
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
-
-      - name: Publish APK to Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: robot-${{ github.run_number }}
-          name: Robot APK ${{ github.run_number }}
-          files: app/build/outputs/apk/debug/app-debug.apk
+                  rect.set(22f * u, 18f * u, 78f * u, 54f * u); canvas.drawRoundRect(rect,

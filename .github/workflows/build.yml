@@ -125,53 +125,182 @@ jobs:
 
           import android.Manifest
           import android.app.Activity
+          import android.app.TimePickerDialog
           import android.content.Intent
           import android.content.pm.PackageManager
+          import android.graphics.Paint
           import android.net.Uri
           import android.os.Build
           import android.os.Bundle
           import android.provider.Settings
           import android.view.Gravity
+          import android.view.View
           import android.widget.Button
+          import android.widget.EditText
           import android.widget.LinearLayout
+          import android.widget.ScrollView
+          import android.widget.Switch
           import android.widget.TextView
 
           class MainActivity : Activity() {
 
+              private lateinit var listBox: LinearLayout
+              private lateinit var input: EditText
+              private lateinit var timeBtn: Button
+              private var pickedMinutes = -1
+
+              private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
 
-                  val pad = (24 * resources.displayMetrics.density).toInt()
-                  val root = LinearLayout(this).apply {
-                      orientation = LinearLayout.VERTICAL
-                      gravity = Gravity.CENTER
-                      setPadding(pad, pad, pad, pad)
+                  val root = LinearLayout(this)
+                  root.orientation = LinearLayout.VERTICAL
+                  root.layoutDirection = View.LAYOUT_DIRECTION_RTL
+                  root.setPadding(dp(20), dp(28), dp(20), dp(28))
+
+                  val title = TextView(this)
+                  title.text = "الروبوت الصغير 🤖"
+                  title.textSize = 24f
+                  title.gravity = Gravity.CENTER
+
+                  val hint = TextView(this)
+                  hint.text = "شغّله ليظهر فوق كل التطبيقات. اضغط عليه ليحكي لك، واسحبه لأي مكان."
+                  hint.gravity = Gravity.CENTER
+                  hint.setPadding(0, dp(8), 0, dp(12))
+
+                  val buttons = LinearLayout(this)
+                  buttons.orientation = LinearLayout.HORIZONTAL
+                  val start = Button(this)
+                  start.text = "تشغيل الروبوت"
+                  start.setOnClickListener { startRobot() }
+                  val stop = Button(this)
+                  stop.text = "إيقاف الروبوت"
+                  stop.setOnClickListener {
+                      stopService(Intent(this@MainActivity, RobotService::class.java))
+                  }
+                  buttons.addView(start, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                  buttons.addView(stop, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+                  val water = Switch(this)
+                  water.text = "تذكير بشرب الماء كل ساعة"
+                  water.isChecked = TaskStore.water(this)
+                  water.setOnCheckedChangeListener { _, on -> TaskStore.setWater(this@MainActivity, on) }
+                  water.setPadding(0, dp(12), 0, dp(12))
+
+                  val tasksTitle = TextView(this)
+                  tasksTitle.text = "مهامي"
+                  tasksTitle.textSize = 20f
+                  tasksTitle.setPadding(0, dp(8), 0, dp(4))
+
+                  input = EditText(this)
+                  input.hint = "مهمة جديدة"
+                  input.isSingleLine = true
+
+                  timeBtn = Button(this)
+                  timeBtn.text = "⏰ بدون وقت"
+                  timeBtn.setOnClickListener { pickTime() }
+                  timeBtn.setOnLongClickListener {
+                      pickedMinutes = -1
+                      timeBtn.text = "⏰ بدون وقت"
+                      true
                   }
 
-                  val title = TextView(this).apply {
-                      text = "الروبوت الصغير 🤖"
-                      textSize = 24f
-                      gravity = Gravity.CENTER
-                  }
-                  val hint = TextView(this).apply {
-                      text = "اضغط تشغيل ليظهر الروبوت فوق كل التطبيقات.\nاسحبه بإصبعك، اضغط عليه ليلوّح، واتركه يتمشى لحاله."
-                      gravity = Gravity.CENTER
-                      setPadding(0, pad / 2, 0, pad)
-                  }
-                  val start = Button(this).apply {
-                      text = "تشغيل الروبوت"
-                      setOnClickListener { startRobot() }
-                  }
-                  val stop = Button(this).apply {
-                      text = "إيقاف الروبوت"
-                      setOnClickListener { stopService(Intent(this@MainActivity, RobotService::class.java)) }
-                  }
+                  val inputRow = LinearLayout(this)
+                  inputRow.orientation = LinearLayout.HORIZONTAL
+                  inputRow.gravity = Gravity.CENTER_VERTICAL
+                  inputRow.addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                  inputRow.addView(timeBtn)
+
+                  val addBtn = Button(this)
+                  addBtn.text = "أضف المهمة"
+                  addBtn.setOnClickListener { addTask() }
+
+                  val timeHint = TextView(this)
+                  timeHint.text = "اضغط زر الوقت لتحديد ساعة التذكير، واضغط عليه مطولاً لإلغائها. المهمة المؤقتة تتكرر كل يوم حتى تنجزها."
+                  timeHint.textSize = 12f
+                  timeHint.setPadding(0, dp(4), 0, dp(8))
+
+                  listBox = LinearLayout(this)
+                  listBox.orientation = LinearLayout.VERTICAL
 
                   root.addView(title)
                   root.addView(hint)
-                  root.addView(start)
-                  root.addView(stop)
-                  setContentView(root)
+                  root.addView(buttons)
+                  root.addView(water)
+                  root.addView(tasksTitle)
+                  root.addView(inputRow)
+                  root.addView(timeHint)
+                  root.addView(addBtn)
+                  root.addView(listBox)
+
+                  val scroll = ScrollView(this)
+                  scroll.addView(root)
+                  setContentView(scroll)
+
+                  refresh()
+              }
+
+              private fun pickTime() {
+                  TimePickerDialog(this, { _, h, m ->
+                      pickedMinutes = h * 60 + m
+                      timeBtn.text = "⏰ " + TaskStore.fmt(pickedMinutes)
+                  }, 9, 0, true).show()
+              }
+
+              private fun addTask() {
+                  val text = input.text.toString().trim()
+                  if (text.isEmpty()) {
+                      input.error = "اكتب المهمة أولاً"
+                      return
+                  }
+                  TaskStore.add(this, text, pickedMinutes)
+                  input.text.clear()
+                  pickedMinutes = -1
+                  timeBtn.text = "⏰ بدون وقت"
+                  refresh()
+              }
+
+              private fun refresh() {
+                  listBox.removeAllViews()
+                  val tasks = TaskStore.load(this).sortedBy { it.done }
+                  if (tasks.isEmpty()) {
+                      val empty = TextView(this)
+                      empty.text = "ما في مهام بعد. أضف أول مهمة."
+                      empty.setPadding(0, dp(12), 0, 0)
+                      listBox.addView(empty)
+                      return
+                  }
+                  for (t in tasks) {
+                      val row = LinearLayout(this)
+                      row.orientation = LinearLayout.HORIZONTAL
+                      row.gravity = Gravity.CENTER_VERTICAL
+                      row.setPadding(0, dp(6), 0, dp(6))
+
+                      val label = TextView(this)
+                      val time = if (t.minutes >= 0) "   ⏰ " + TaskStore.fmt(t.minutes) else ""
+                      label.text = (if (t.done) "✓ " else "○ ") + t.text + time
+                      label.textSize = 17f
+                      if (t.done) {
+                          label.paintFlags = label.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+                          label.alpha = 0.5f
+                      }
+                      label.setOnClickListener {
+                          TaskStore.toggle(this@MainActivity, t.id)
+                          refresh()
+                      }
+
+                      val del = Button(this)
+                      del.text = "حذف"
+                      del.setOnClickListener {
+                          TaskStore.remove(this@MainActivity, t.id)
+                          refresh()
+                      }
+
+                      row.addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                      row.addView(del)
+                      listBox.addView(row)
+                  }
               }
 
               private fun startRobot() {
@@ -353,207 +482,4 @@ jobs:
               private fun whiteStroke(u: Float): Paint {
                   strokeWhite.strokeWidth = 2.5f * u
                   return strokeWhite
-              }
-          }
-          ROBOT_EOF
-          cat > app/src/main/java/com/example/robotoverlay/RobotService.kt <<'ROBOT_EOF'
-          package com.example.robotoverlay
-
-          import android.animation.ValueAnimator
-          import android.app.Notification
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.app.PendingIntent
-          import android.app.Service
-          import android.content.Context
-          import android.content.Intent
-          import android.graphics.PixelFormat
-          import android.os.Handler
-          import android.os.IBinder
-          import android.os.Looper
-          import android.view.Gravity
-          import android.view.MotionEvent
-          import android.view.WindowManager
-          import android.view.animation.LinearInterpolator
-          import kotlin.math.abs
-          import kotlin.math.hypot
-          import kotlin.random.Random
-
-          class RobotService : Service() {
-
-              private lateinit var wm: WindowManager
-              private var robot: RobotView? = null
-              private lateinit var params: WindowManager.LayoutParams
-              private val handler = Handler(Looper.getMainLooper())
-              private var walkAnimator: ValueAnimator? = null
-              private var dragging = false
-
-              private val sizePx get() = (120 * resources.displayMetrics.density).toInt()
-
-              private val wander = object : Runnable {
-                  override fun run() {
-                      val r = robot ?: return
-                      if (!dragging && r.state == RobotView.State.IDLE) walkToRandomSpot()
-                      handler.postDelayed(this, Random.nextLong(4000, 9000))
-                  }
-              }
-
-              override fun onBind(intent: Intent?): IBinder? = null
-
-              override fun onCreate() {
-                  super.onCreate()
-                  wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                  startAsForeground()
-                  addRobot()
-                  handler.postDelayed(wander, 3000)
-              }
-
-              override fun onDestroy() {
-                  handler.removeCallbacksAndMessages(null)
-                  walkAnimator?.cancel()
-                  robot?.let { runCatching { wm.removeView(it) } }
-                  robot = null
-                  super.onDestroy()
-              }
-
-              private fun startAsForeground() {
-                  val channelId = "robot_overlay"
-                  val nm = getSystemService(NotificationManager::class.java)
-                  nm.createNotificationChannel(
-                      NotificationChannel(channelId, "Robot", NotificationManager.IMPORTANCE_LOW)
-                  )
-                  val stopIntent = PendingIntent.getService(
-                      this, 0,
-                      Intent(this, RobotService::class.java).setAction("STOP"),
-                      PendingIntent.FLAG_IMMUTABLE
-                  )
-                  val notification = Notification.Builder(this, channelId)
-                      .setContentTitle("الروبوت شغّال")
-                      .setContentText("اسحب الإشعار للأسفل لإيقافه")
-                      .setSmallIcon(android.R.drawable.ic_dialog_info)
-                      .addAction(
-                          Notification.Action.Builder(
-                              android.R.drawable.ic_menu_close_clear_cancel, "إيقاف", stopIntent
-                          ).build()
-                      )
-                      .setOngoing(true)
-                      .build()
-                  startForeground(1, notification)
-              }
-
-              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  if (intent?.action == "STOP") {
-                      stopSelf()
-                      return START_NOT_STICKY
-                  }
-                  return START_STICKY
-              }
-
-              private fun addRobot() {
-                  val view = RobotView(this)
-                  val dm = resources.displayMetrics
-                  params = WindowManager.LayoutParams(
-                      sizePx, sizePx,
-                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                      PixelFormat.TRANSLUCENT
-                  ).apply {
-                      gravity = Gravity.TOP or Gravity.START
-                      x = dm.widthPixels / 2 - sizePx / 2
-                      y = dm.heightPixels / 2
-                  }
-
-                  var downX = 0f
-                  var downY = 0f
-                  var startX = 0
-                  var startY = 0
-                  var moved = false
-
-                  view.setOnTouchListener { _, e ->
-                      when (e.action) {
-                          MotionEvent.ACTION_DOWN -> {
-                              walkAnimator?.cancel()
-                              view.walking = false
-                              dragging = true
-                              moved = false
-                              downX = e.rawX; downY = e.rawY
-                              startX = params.x; startY = params.y
-                              view.touchActivity()
-                          }
-                          MotionEvent.ACTION_MOVE -> {
-                              val dx = e.rawX - downX
-                              val dy = e.rawY - downY
-                              if (hypot(dx, dy) > 12f) moved = true
-                              if (moved) {
-                                  params.x = (startX + dx).toInt()
-                                  params.y = (startY + dy).toInt()
-                                  if (abs(dx) > 6f) view.facing = if (dx > 0) 1f else -1f
-                                  view.lookX = (dx / 150f).coerceIn(-1f, 1f)
-                                  updateLayout(view)
-                              }
-                          }
-                          MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                              dragging = false
-                              view.lookX = 0f
-                              if (!moved) view.poke()
-                          }
-                      }
-                      true
-                  }
-
-                  wm.addView(view, params)
-                  robot = view
-              }
-
-              private fun updateLayout(view: RobotView) {
-                  runCatching { wm.updateViewLayout(view, params) }
-              }
-
-              private fun walkToRandomSpot() {
-                  val view = robot ?: return
-                  val dm = resources.displayMetrics
-                  val targetX = Random.nextInt(0, (dm.widthPixels - sizePx).coerceAtLeast(1))
-                  val targetY = Random.nextInt(
-                      (dm.heightPixels * 0.2f).toInt(),
-                      (dm.heightPixels * 0.7f).toInt().coerceAtLeast((dm.heightPixels * 0.2f).toInt() + 1)
-                  )
-                  val fromX = params.x
-                  val fromY = params.y
-                  val dist = hypot((targetX - fromX).toFloat(), (targetY - fromY).toFloat())
-
-                  view.facing = if (targetX >= fromX) 1f else -1f
-                  view.lookX = view.facing
-                  view.walking = true
-
-                  walkAnimator?.cancel()
-                  walkAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                      duration = (dist / dm.density * 9f).toLong().coerceIn(800L, 5000L)
-                      interpolator = LinearInterpolator()
-                      addUpdateListener {
-                          val f = it.animatedValue as Float
-                          params.x = (fromX + (targetX - fromX) * f).toInt()
-                          params.y = (fromY + (targetY - fromY) * f).toInt()
-                          updateLayout(view)
-                      }
-                      addListener(object : android.animation.AnimatorListenerAdapter() {
-                          override fun onAnimationEnd(animation: android.animation.Animator) {
-                              view.walking = false
-                              view.lookX = 0f
-                          }
-                      })
-                      start()
-                  }
-              }
-          }
-          ROBOT_EOF
-
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
-
-      - name: Publish APK to Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: robot-${{ github.run_number }}
-          name: Robot APK ${{ github.run_number }}
-          files: app/build/outputs/apk/debug/app-debug.apk
+          
